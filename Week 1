@@ -1,0 +1,53 @@
+import pandas as pd
+import glob
+
+# Load all monthly files from folder
+sold_files = glob.glob("data/sold/*.csv")
+listed_files = glob.glob("data/listed/*.csv")
+
+# Read files into lists
+sold_list = [pd.read_csv(file) for file in sold_files]
+listed_list = [pd.read_csv(file) for file in listed_files]
+
+
+# Row count BEFORE concatenation (sum of individual files)
+sold_rows_before = sum(len(df) for df in sold_list)
+listed_rows_before = sum(len(df) for df in listed_list)
+
+# Combine all files
+sold = pd.concat(sold_list, ignore_index=True)
+listed = pd.concat(listed_list, ignore_index=True)
+
+# Row count AFTER concatenation
+print("SOLD rows BEFORE concat:", sold_rows_before)
+print("SOLD rows AFTER concat:", len(sold))
+
+print("LISTED rows BEFORE concat:", listed_rows_before)
+print("LISTED rows AFTER concat:", len(listed))
+
+
+# Filter Residential only
+# Keep only rows where PropertyType == 'Residential'
+sold_res = sold[sold["PropertyType"] == "Residential"]
+listed_res = listed[listed["PropertyType"] == "Residential"]
+
+# Row count BEFORE and AFTER filter
+print("\nSOLD rows BEFORE filter:", len(sold))
+print("SOLD rows AFTER filter:", len(sold_res))
+
+print("LISTED rows BEFORE filter:", len(listed))
+print("LISTED rows AFTER filter:", len(listed_res))
+
+#Row count before concat: 591733
+#Row count after concat: 591733
+#listed rows before concat: 825509
+#Listed rows after concat: 825509
+
+#sold rows before filter: 591733
+#sold rows after filter: 397603
+#listed rows before filter: 825509
+#listed rows after filter: 523176
+
+# Save final datasets as csv files
+sold_res.to_csv("final_sold_residential.csv", index=False)
+listed_res.to_csv("final_listed_residential.csv", index=False)
