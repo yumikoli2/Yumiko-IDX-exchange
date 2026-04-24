@@ -1,0 +1,255 @@
+import pandas as pd
+import glob
+import pandas as pd
+import glob
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
+# -----------------------------
+# Load and Combine Data
+# -----------------------------
+sold_files = glob.glob("data/sold/*.csv")
+sold = pd.concat([pd.read_csv(f) for f in sold_files], ignore_index=True)
+
+# -----------------------------
+# Filter Residential
+# -----------------------------
+sold_res = sold[sold["PropertyType"] == "Residential"].copy()
+
+# -----------------------------
+# Columns to Analyze
+# -----------------------------
+cols = [
+    "ClosePrice", "ListPrice", "OriginalListPrice",
+    "LivingArea", "LotSizeAcres", "BedroomsTotal",
+    "BathroomsTotalInteger", "DaysOnMarket", "YearBuilt"
+]
+
+available_cols = [c for c in cols if c in sold_res.columns]
+
+# -----------------------------
+# Create ONE PDF Report
+# -----------------------------
+output_file = "eda_sold_plots.pdf"
+
+with PdfPages(output_file) as pdf:
+
+    for col in available_cols:
+
+        data = sold_res[col].dropna()
+
+        if data.empty:
+            continue
+
+        # Create ONE page per column (hist + boxplot together)
+        fig, axes = plt.subplots(2, 1, figsize=(8, 8))
+
+        # Histogram
+        axes[0].hist(data, bins=50)
+        axes[0].set_title(f"{col} Histogram")
+        axes[0].set_xlabel(col)
+        axes[0].set_ylabel("Frequency")
+
+        # Boxplot
+        axes[1].boxplot(data, vert=False)
+        axes[1].set_title(f"{col} Boxplot")
+
+        plt.tight_layout()
+
+        # Save page to SAME PDF
+        pdf.savefig(fig)
+
+        plt.close(fig)
+
+print("="*60)
+print("ALL PLOTS SAVED SUCCESSFULLY")
+print(f"File: {output_file}")
+print("="*60)
+
+# -----------------------------
+# Load and Combine Data
+# -----------------------------
+sold_files = glob.glob("data/sold/*.csv")
+sold_list = [pd.read_csv(file) for file in sold_files]
+
+sold = pd.concat(sold_list, ignore_index=True)
+
+# -----------------------------
+# Filter Residential
+# -----------------------------
+sold_res = sold[sold["PropertyType"] == "Residential"].copy()
+
+# -----------------------------
+# Initialize summary container
+# -----------------------------
+summary_rows = []
+
+# -----------------------------
+# 1. Dataset Shape
+# -----------------------------
+summary_rows.append({
+    "Section": "Dataset",
+    "Metric": "Row Count",
+    "Column": "ALL",
+    "Value": len(sold_res)
+})
+
+summary_rows.append({
+    "Section": "Dataset",
+    "Metric": "Column Count",
+    "Column": "ALL",
+    "Value": sold_res.shape[1]
+})
+
+# -----------------------------
+# 2. Missing Values
+# -----------------------------
+missing_counts = sold_res.isnull().sum()
+missing_pct = (missing_counts / len(sold_res)) * 100
+
+for col in sold_res.columns:
+    summary_rows.append({
+        "Section": "Missing",
+        "Metric": "Missing Count",
+        "Column": col,
+        "Value": missing_counts[col]
+    })
+    summary_rows.append({
+        "Section": "Missing",
+        "Metric": "Missing %",
+        "Column": col,
+        "Value": round(missing_pct[col], 2)
+    })
+
+# -----------------------------
+# 3. >90% Missing Flag
+# -----------------------------
+high_missing_cols = missing_pct[missing_pct > 90].index.tolist()
+
+for col in high_missing_cols:
+    summary_rows.append({
+        "Section": "Data Quality",
+        "Metric": "High Missing (>90%)",
+        "Column": col,
+        "Value": "YES"
+    })
+
+# -----------------------------
+# 4. Numeric Distribution + Outliers
+# -----------------------------
+numeric_cols = [
+    "ClosePrice", "ListPrice", "OriginalListPrice",
+    "LivingArea", "LotSizeAcres", "BedroomsTotal",
+    "BathroomsTotalInteger", "DaysOnMarket", "YearBuilt"
+]
+
+for col in numeric_cols:
+    if col in sold_res.columns:
+
+        series = sold_res[col].dropna()
+
+        if series.empty:
+            continue
+
+        # --- Distribution stats ---
+        desc = series.describe(percentiles=[0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
+
+        for stat in desc.index:
+            summary_rows.append({
+                "Section": "Distribution",
+                "Metric": stat,
+                "Column": col,
+                "Value": desc[stat]
+            })
+
+        # --- Outlier detection (IQR method) ---
+        Q1 = series.quantile(0.25)
+        Q3 = series.quantile(0.75)
+        IQR = Q3 - Q1
+
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers_low = series[series < lower_bound]
+        outliers_high = series[series > upper_bound]
+
+        # Counts
+        summary_rows.append({
+            "Section": "Outliers",
+            "Metric": "Lower Bound",
+            "Column": col,
+            "Value": lower_bound
+        })
+
+        summary_rows.append({
+            "Section": "Outliers",
+            "Metric": "Upper Bound",
+            "Column": col,
+            "Value": upper_bound
+        })
+
+        summary_rows.append({
+            "Section": "Outliers",
+            "Metric": "Outlier Count (Low)",
+            "Column": col,
+            "Value": len(outliers_low)
+        })
+
+        summary_rows.append({
+            "Section": "Outliers",
+            "Metric": "Outlier Count (High)",
+            "Column": col,
+            "Value": len(outliers_high)
+        })
+
+        summary_rows.append({
+            "Section": "Outliers",
+            "Metric": "Outlier %",
+            "Column": col,
+            "Value": round((len(outliers_low) + len(outliers_high)) / len(series) * 100, 2)
+        })
+
+        # Optional: extreme values
+        if not outliers_low.empty:
+            summary_rows.append({
+                "Section": "Outliers",
+                "Metric": "Min Outlier",
+                "Column": col,
+                "Value": outliers_low.min()
+            })
+
+        if not outliers_high.empty:
+            summary_rows.append({
+                "Section": "Outliers",
+                "Metric": "Max Outlier",
+                "Column": col,
+                "Value": outliers_high.max()
+            })
+
+# -----------------------------
+# 5. Unique Property Types
+# -----------------------------
+property_types = sold["PropertyType"].dropna().unique()
+
+for ptype in property_types:
+    summary_rows.append({
+        "Section": "PropertyType",
+        "Metric": "Unique Value",
+        "Column": "PropertyType",
+        "Value": ptype
+    })
+
+# -----------------------------
+# Convert to DataFrame
+# -----------------------------
+summary_df = pd.DataFrame(summary_rows)
+
+# -----------------------------
+# Save to CSV
+# -----------------------------
+summary_df.to_csv("eda_summary_sold.csv", index=False)
+
+print("="*60)
+print("EDA SUMMARY SAVED")
+print("File: eda_sold_summary.csv")
+print("="*60)
